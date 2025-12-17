@@ -9,8 +9,6 @@ import logging
 from pathlib import Path
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -18,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.data.dataset import preprocess_data
 from src.models.cnn_model import create_model_from_config
 from src.training.metrics import calculate_metrics, validate_model
+from src.training.utils import load_config, set_random_seed, get_device, create_optimizer, create_scheduler
+from src.data.validation import validate_dataset
 
 
 def setup_logging(log_dir: str, verbose: bool = False):
@@ -157,8 +157,7 @@ def train(config_path: str, verbose: bool = False):
         config_path: Путь к конфигурационному файлу
         verbose: Подробный режим логирования
     """
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
+    config = load_config(config_path)
     
     log_dir = config.get('logging', {}).get('log_dir', 'logs')
     logger = setup_logging(log_dir, verbose)
@@ -168,12 +167,10 @@ def train(config_path: str, verbose: bool = False):
     logger.info(f"Конфигурация загружена из: {config_path}")
     
     random_seed = config.get('training', {}).get('random_seed', 42)
-    torch.manual_seed(random_seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(random_seed)
+    set_random_seed(random_seed)
     logger.info(f"Random seed установлен: {random_seed}")
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
     logger.info(f"Используемое устройство: {device}")
     
     logger.info("Загрузка и предобработка данных...")
@@ -182,8 +179,19 @@ def train(config_path: str, verbose: bool = False):
     train_loader, val_loader, test_loader = preprocess_data(data_config)
     logger.info("Данные загружены успешно")
     
-    logger.info("Создание модели...")
+    logger.info("Валидация данных...")
     model_config = config.get('model', {})
+    num_classes = model_config.get('num_classes', 10)
+    input_size = model_config.get('input_size', 28)
+    
+    is_valid, errors = validate_dataset(train_loader, num_classes=num_classes, expected_size=input_size)
+    if not is_valid:
+        error_msg = "\n".join(errors[:5])
+        logger.warning(f"Обнаружены проблемы в данных: {error_msg}")
+    else:
+        logger.info("Валидация данных прошла успешно")
+    
+    logger.info("Создание модели...")
     model = create_model_from_config(model_config)
     model = model.to(device)
     logger.info(f"Модель создана и перемещена на {device}")
@@ -191,27 +199,15 @@ def train(config_path: str, verbose: bool = False):
     criterion = nn.CrossEntropyLoss()
     
     training_config = config.get('training', {})
-    learning_rate = training_config.get('learning_rate', 0.001)
-    weight_decay = training_config.get('weight_decay', 0.0001)
-    optimizer_name = training_config.get('optimizer', 'Adam')
+    optimizer = create_optimizer(model, training_config)
+    logger.info(f"Оптимизатор: {training_config.get('optimizer', 'Adam')}, "
+               f"LR: {training_config.get('learning_rate', 0.001)}, "
+               f"Weight decay: {training_config.get('weight_decay', 0.0001)}")
     
-    if optimizer_name.lower() == 'adam':
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    elif optimizer_name.lower() == 'sgd':
-        momentum = training_config.get('momentum', 0.9)
-        optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum, weight_decay=weight_decay)
-    else:
-        raise ValueError(f"Неизвестный оптимизатор: {optimizer_name}")
-    
-    logger.info(f"Оптимизатор: {optimizer_name}, LR: {learning_rate}, Weight decay: {weight_decay}")
-    
-    scheduler = None
-    scheduler_type = training_config.get('scheduler', None)
-    if scheduler_type == 'StepLR':
-        step_size = training_config.get('step_size', 10)
-        gamma = training_config.get('gamma', 0.1)
-        scheduler = StepLR(optimizer, step_size=step_size, gamma=gamma)
-        logger.info(f"Scheduler: StepLR (step_size={step_size}, gamma={gamma})")
+    scheduler = create_scheduler(optimizer, training_config)
+    if scheduler is not None:
+        logger.info(f"Scheduler: StepLR (step_size={training_config.get('step_size', 10)}, "
+                   f"gamma={training_config.get('gamma', 0.1)})")
     
     num_epochs = training_config.get('num_epochs', 10)
     best_val_acc = 0.0
