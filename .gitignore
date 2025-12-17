@@ -1,6 +1,7 @@
 __pycache__/
 
 # Data
+data/
 *.csv
 *.h5
 *.hdf5
@@ -8,6 +9,7 @@ __pycache__/
 *.pickle
 
 # Models
+models/
 *.pth
 *.pt
 checkpoints/
