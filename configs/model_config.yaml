@@ -1,0 +1,15 @@
+model:
+  name: "CNN"
+  num_classes: 10
+  input_size: 28
+  hidden_dims: [128, 64]  
+  dropout: 0.5
+
+# Альтернативные конфигурации можно добавить ниже:
+# model_large:
+#   name: "CNN"
+#   num_classes: 10
+#   input_size: 28
+#   hidden_dims: [256, 128, 64]
+#   dropout: 0.3
+

@@ -1,0 +1,39 @@
+data:
+  dataset_name: "FashionMNIST"
+  data_dir: "data"
+  batch_size: 64
+  num_workers: 4
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  augment: true
+
+model:
+  name: "CNN"
+  num_classes: 10
+  input_size: 28
+  hidden_dims: [128, 64]
+  dropout: 0.5
+  save_dir: "models"
+
+training:
+  num_epochs: 10
+  learning_rate: 0.001
+  optimizer: "Adam"  # Adam или SGD
+  weight_decay: 0.0001
+  momentum: 0.9  # Для SGD
+  scheduler: "StepLR"  # StepLR или null
+  step_size: 5
+  gamma: 0.1
+  random_seed: 42
+
+inference:
+  model_path: "models/best_model"
+  device: "cpu"
+  batch_size: 1
+
+logging:
+  log_dir: "logs"
+  use_wandb: false
+  project_name: "product-classification"
+
