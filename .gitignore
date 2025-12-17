@@ -1,0 +1,20 @@
+__pycache__/
+
+# Data
+data/
+*.csv
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Models
+models/
+*.pth
+*.pt
+checkpoints/
+
+# Logs
+logs/
+*.log
+
