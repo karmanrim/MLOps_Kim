@@ -141,6 +141,7 @@ MLOps_Kim/
 
 - **ML Framework:** PyTorch
 - **Версионирование данных и моделей:** DVC
+- **Трекинг экспериментов:** MLflow
 - **API Framework:** FastAPI
 - **Контейнеризация:** Docker
 - **Мониторинг:** Prometheus, Grafana (опционально)
@@ -153,7 +154,6 @@ MLOps_Kim/
 
 ```bash
 pip install -r requirements.txt
-pip install dvc
 ```
 
 ### Работа с DVC
@@ -275,6 +275,75 @@ dvc repro evaluate
 
 # Напрямую через Python
 python src/training/evaluate.py --config configs/config.yaml --model-path models/best_model
+```
+
+## Работа с MLflow
+
+### Трекинг экспериментов
+
+Все эксперименты автоматически логируются в MLflow при запуске обучения. MLflow отслеживает:
+
+- **Параметры**: learning rate, batch size, optimizer, epochs, и др.
+- **Метрики**: train/val/test loss, accuracy, precision, recall, F1-score
+- **Артефакты**: модели, логи, конфигурации, dvc.lock
+- **DVC интеграция**: хеш данных из data.dvc логируется как тег
+
+### Просмотр результатов экспериментов
+
+```bash
+# Запустить MLflow UI
+mlflow ui
+
+# MLflow UI будет доступен по адресу: http://localhost:5000
+```
+
+В интерфейсе MLflow вы можете:
+- Просматривать все запуски (runs) с параметрами и метриками
+- Сравнивать эксперименты
+- Визуализировать метрики (графики обучения)
+- Скачивать артефакты (модели, логи)
+- Фильтровать и сортировать эксперименты
+
+### Где хранятся результаты MLflow
+
+Результаты экспериментов хранятся локально в директории `mlruns/`:
+- `mlruns/` - база данных экспериментов и метрик
+- `mlartifacts/` - артефакты (модели, файлы)
+
+Эти директории добавлены в `.gitignore` и не версионируются в git.
+
+### Интеграция DVC + MLflow
+
+При каждом запуске обучения:
+1. MLflow логирует хеш данных из `data.dvc` как тег `dvc_data_hash`
+2. Файл `dvc.lock` сохраняется как артефакт
+3. Это позволяет точно знать, на какой версии данных обучалась модель
+
+### Сравнение экспериментов
+
+```bash
+# В MLflow UI можно:
+# 1. Выбрать несколько runs (checkbox)
+# 2. Нажать "Compare"
+# 3. Увидеть разницу в параметрах и метриках
+```
+
+### Программный доступ к MLflow
+
+```python
+import mlflow
+
+# Получить лучший run по метрике
+client = mlflow.tracking.MlflowClient()
+experiment = client.get_experiment_by_name("fashion-mnist-classification")
+runs = client.search_runs(
+    experiment_ids=[experiment.experiment_id],
+    order_by=["metrics.test_accuracy DESC"],
+    max_results=1
+)
+best_run = runs[0]
+print(f"Best run ID: {best_run.info.run_id}")
+print(f"Test accuracy: {best_run.data.metrics['test_accuracy']}")
 ```
 
 ## Тестирование

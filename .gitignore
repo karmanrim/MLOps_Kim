@@ -25,3 +25,7 @@ htmlcov/
 /models/best_model
 /models/final_model
 /metrics
+
+# MLflow
+/mlruns
+/mlartifacts
