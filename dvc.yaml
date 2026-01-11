@@ -1,0 +1,55 @@
+stages:
+  prepare:
+    cmd: python src/data/prepare.py --config configs/config.yaml
+    deps:
+      - src/data/prepare.py
+      - src/data/dataset.py
+      - src/data/validation.py
+      - configs/config.yaml
+      - data
+    outs:
+      - metrics/data_info.yaml
+
+  train:
+    cmd: python src/training/train.py --config configs/config.yaml
+    deps:
+      - src/training/train.py
+      - src/training/utils.py
+      - src/training/metrics.py
+      - src/models/cnn_model.py
+      - src/data/dataset.py
+      - configs/config.yaml
+      - configs/model_config.yaml
+      - data
+      - metrics/data_info.yaml
+    params:
+      - configs/config.yaml:
+          - training.num_epochs
+          - training.learning_rate
+          - training.optimizer
+          - training.random_seed
+          - model.num_classes
+          - model.hidden_dims
+          - model.dropout
+    outs:
+      - models/best_model:
+          cache: true
+      - models/final_model:
+          cache: true
+
+  evaluate:
+    cmd: python src/training/evaluate.py --config configs/config.yaml --model-path models/best_model
+    deps:
+      - src/training/evaluate.py
+      - src/training/metrics.py
+      - src/models/cnn_model.py
+      - src/data/dataset.py
+      - configs/config.yaml
+      - data
+      - models/best_model
+    metrics:
+      - metrics/test_metrics.json:
+          cache: false
+    outs:
+      - metrics/test_metrics.yaml
+

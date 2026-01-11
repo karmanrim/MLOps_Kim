@@ -118,7 +118,13 @@ MLOps_Kim/
 ├── README.md              # Описание проекта
 ├── requirements.txt       # Зависимости проекта
 ├── .gitignore            # Игнорируемые файлы
-├── data/                 # Данные (не в git)
+├── dvc.yaml              # DVC pipeline конфигурация
+├── dvc.lock              # DVC pipeline lock файл
+├── data.dvc              # DVC файл для данных
+├── models.dvc            # DVC файл для моделей
+├── data/                 # Данные (версионируются через DVC)
+├── models/              # Модели (версионируются через DVC)
+├── metrics/             # Метрики экспериментов
 ├── src/                  # Исходный код
 │   ├── data/            # Модули для работы с данными
 │   ├── models/          # Архитектуры моделей
@@ -134,6 +140,7 @@ MLOps_Kim/
 ## Технологический стек
 
 - **ML Framework:** PyTorch
+- **Версионирование данных и моделей:** DVC
 - **API Framework:** FastAPI
 - **Контейнеризация:** Docker
 - **Мониторинг:** Prometheus, Grafana (опционально)
@@ -146,9 +153,85 @@ MLOps_Kim/
 
 ```bash
 pip install -r requirements.txt
+pip install dvc
+```
+
+### Работа с DVC
+
+#### Первоначальная настройка
+
+После клонирования репозитория необходимо получить данные и модели:
+
+```bash
+# Клонирование репозитория
+git clone <repository-url>
+cd MLOps_Kim
+
+# Получение данных и моделей из удалённого хранилища DVC
+dvc pull
+```
+
+#### Где физически лежат данные/модели
+
+Данные и модели версионируются через DVC и хранятся в удалённом хранилище. Локально они находятся в директориях:
+- `data/` - датасет FashionMNIST
+- `models/` - обученные модели (best_model и final_model)
+
+Файлы `.dvc` (data.dvc, models.dvc) содержат метаинформацию и хеши для отслеживания версий.
+
+#### Команды для работы с версиями
+
+```bash
+# Получить данные и модели из удалённого хранилища
+dvc pull
+
+# Отправить изменения в удалённое хранилище
+dvc push
+
+# Переключиться на другую версию данных/моделей
+git checkout <commit-hash>
+dvc checkout
+
+# Посмотреть статус DVC
+dvc status
+
+# Посмотреть DAG пайплайна
+dvc dag
+```
+
+#### План экспериментов
+
+Для воспроизведения экспериментов используйте DVC pipeline:
+
+```bash
+# Запустить весь пайплайн (prepare -> train -> evaluate)
+dvc repro
+
+# Запустить конкретный stage
+dvc repro prepare
+dvc repro train
+dvc repro evaluate
+
+# Посмотреть метрики
+dvc metrics show
+
+# Сравнить метрики между экспериментами
+dvc metrics diff
 ```
 
 ### Обучение модели
+
+#### Через DVC Pipeline (рекомендуется)
+
+```bash
+# Полный пайплайн: подготовка данных -> обучение -> оценка
+dvc repro
+
+# Только обучение (если данные уже подготовлены)
+dvc repro train
+```
+
+#### Напрямую через Python
 
 ```bash
 # Базовый запуск
@@ -179,8 +262,20 @@ python src/training/train.py --config configs/config.yaml --verbose
 - `models/best_model/` - лучшая модель (по валидационной точности) в формате Hugging Face
 - `models/final_model/` - финальная модель после всех эпох в формате Hugging Face
 - `logs/training.log` - лог файл с детальной информацией о процессе обучения
+- `metrics/test_metrics.json` - метрики оценки модели на тестовой выборке
+- `metrics/data_info.yaml` - информация о датасете
 
-Модели сохраняются в формате Hugging Face (с `config.json` и `pytorch_model.bin`).
+Модели сохраняются в формате Hugging Face (с `config.json` и `model.safetensors`).
+
+### Оценка модели
+
+```bash
+# Через DVC Pipeline
+dvc repro evaluate
+
+# Напрямую через Python
+python src/training/evaluate.py --config configs/config.yaml --model-path models/best_model
+```
 
 ## Тестирование
 
@@ -256,3 +351,19 @@ flake8 src/ tests/
 3. Конфигурация сохраняется вместе с моделью
 4. Логи содержат все параметры обучения
 5. Тесты проверяют воспроизводимость результатов
+6. **DVC** обеспечивает версионирование данных, моделей и пайплайнов
+7. **DVC pipeline** позволяет полностью восстановить любую версию датасета, модели и пайплайна одной командой `dvc pull`
+
+### Восстановление конкретной версии эксперимента
+
+```bash
+# Переключиться на нужный коммит
+git checkout <commit-hash>
+
+# Получить соответствующие данные и модели
+dvc checkout
+dvc pull
+
+# Воспроизвести эксперимент
+dvc repro
+```
