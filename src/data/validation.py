@@ -27,13 +27,13 @@ def validate_data_format(data: torch.Tensor, target: torch.Tensor) -> Tuple[bool
         return False, f"Метки должны быть torch.Tensor, получен {type(target)}"
     
     if len(data.shape) != 4:
-        return False, f"Данные должны иметь форму (batch, channels, height, width), получена {data.shape}"
+        return False, f"Данные должны иметь форма (batch, channels, height, width), получена форма {data.shape}"
     
     if len(target.shape) != 1:
         return False, f"Метки должны иметь форму (batch,), получена {target.shape}"
     
     if data.shape[0] != target.shape[0]:
-        return False, f"Размер батча данных ({data.shape[0]}) не совпадает с размером меток ({target.shape[0]})"
+        return False, f"размер батча данных ({data.shape[0]}) не совпадает с размером меток ({target.shape[0]})"
     
     return True, ""
 

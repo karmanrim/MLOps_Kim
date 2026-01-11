@@ -6,6 +6,7 @@ __pycache__/
 *.hdf5
 *.pkl
 *.pickle
+data/
 
 # Models
 *.pth
@@ -16,3 +17,9 @@ checkpoints/
 logs/
 *.log
 
+# Checkpoints
+models/
+
+# Tests
+.coverage
+htmlcov/

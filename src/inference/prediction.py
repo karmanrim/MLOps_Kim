@@ -121,7 +121,7 @@ def validate_prediction_output(logits: torch.Tensor) -> Tuple[bool, str]:
         return False, f"logits должен быть torch.Tensor, получен {type(logits)}"
     
     if len(logits.shape) != 2:
-        return False, f"logits должен иметь форму (batch_size, num_classes), получена {logits.shape}"
+        return False, f"logits должен иметь форма (batch_size, num_classes), получена форма {logits.shape}"
     
     if logits.shape[0] == 0:
         return False, "logits не может быть пустым"
