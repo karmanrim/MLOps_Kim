@@ -64,8 +64,8 @@ stages:
       size: 2228
     - path: src/training/train.py
       hash: md5
-      md5: 2f2e226f439ed55f5fdb3c905b377393
-      size: 10288
+      md5: 9639bc77cb2541b6ae5f9b932e7adb02
+      size: 13749
     - path: src/training/utils.py
       hash: md5
       md5: 83e2f563a2edf8068d897729c9d08ba9

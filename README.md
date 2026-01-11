@@ -142,8 +142,8 @@ MLOps_Kim/
 - **ML Framework:** PyTorch
 - **Версионирование данных и моделей:** DVC
 - **Трекинг экспериментов:** MLflow
-- **API Framework:** FastAPI
-- **Контейнеризация:** Docker
+- **Контейнеризация:** Docker (offline inference)
+- **API Framework:** FastAPI (планируется)
 - **Мониторинг:** Prometheus, Grafana (опционально)
 - **CI/CD:** GitHub Actions
 - **Логирование:** Python logging, структурированные логи
@@ -344,6 +344,163 @@ runs = client.search_runs(
 best_run = runs[0]
 print(f"Best run ID: {best_run.info.run_id}")
 print(f"Test accuracy: {best_run.data.metrics['test_accuracy']}")
+```
+
+## Docker контейнеризация
+
+Проект упакован в Docker образ для offline inference (пакетной обработки изображений).
+
+### Что делает скрипт `src/predict.py`
+
+Скрипт для пакетного инференса:
+- **Загружает модель** с диска (`models/best_model/`)
+- **Принимает аргументы**:
+  - `--input_path` - путь к директории с изображениями
+  - `--output_path` - путь для сохранения результатов (CSV)
+  - `--model_path` - путь к модели (по умолчанию `models/best_model`)
+  - `--batch_size` - размер батча для инференса (по умолчанию 32)
+  - `--device` - устройство (cpu/cuda)
+- **Обрабатывает изображения**: загружает, изменяет размер, нормализует
+- **Выполняет предсказания** на всех изображениях
+- **Сохраняет результаты** в CSV файл с колонками:
+  - `filename` - имя файла
+  - `predicted_class` - предсказанный класс (0-9)
+  - `predicted_label` - название класса (T-shirt, Dress, и т.д.)
+  - `confidence` - уверенность модели
+  - `prob_<class_name>` - вероятности для каждого класса
+
+### Форматы данных
+
+**Входные данные** (`--input_path`):
+- Директория с изображениями
+- Поддерживаемые форматы: `.png`, `.jpg`, `.jpeg`, `.bmp`
+- Изображения автоматически конвертируются в grayscale и resize до 28x28
+
+**Выходные данные** (`--output_path`):
+- CSV файл с предсказаниями
+- Пример:
+```csv
+filename,predicted_class,predicted_label,confidence,prob_T-shirt/top,prob_Trouser,...
+image1.png,0,T-shirt/top,0.95,0.95,0.02,...
+image2.jpg,3,Dress,0.88,0.05,0.01,...
+```
+
+### Сборка Docker образа
+
+```bash
+# Сборка образа
+docker build -t ml-app:v1 .
+
+# Проверка что образ создан
+docker images | grep ml-app
+```
+
+### Запуск контейнера
+
+#### Базовый запуск
+
+```bash
+# Подготовка директорий
+mkdir -p test_images predictions
+
+# Запуск контейнера
+docker run --rm \
+    -v $(pwd)/test_images:/app/input:ro \
+    -v $(pwd)/predictions:/app/output \
+    ml-app:v1 \
+    --input_path /app/input \
+    --output_path /app/output/predictions.csv \
+    --model_path /app/models/best_model \
+    --batch_size 32 \
+    --device cpu
+```
+
+#### Использование готового скрипта
+
+```bash
+# Запуск через готовый скрипт
+./docker-run-example.sh
+```
+
+#### Пояснение параметров Docker
+
+- `--rm` - автоматически удалить контейнер после завершения
+- `-v $(pwd)/test_images:/app/input:ro` - монтировать директорию с изображениями (read-only)
+- `-v $(pwd)/predictions:/app/output` - монтировать директорию для результатов
+- `ml-app:v1` - имя образа
+- Далее идут аргументы для `src/predict.py`
+
+### Структура Docker образа
+
+```
+/app/
+├── src/                    # Исходный код
+│   ├── predict.py         # Скрипт инференса (ENTRYPOINT)
+│   ├── models/            # Архитектуры моделей
+│   └── ...
+├── models/                # Сохранённые модели
+│   └── best_model/
+├── configs/               # Конфигурации
+└── requirements.txt       # Зависимости
+```
+
+### Что игнорируется (.dockerignore)
+
+Для уменьшения размера образа исключены:
+- Данные обучения (`data/`)
+- MLflow артефакты (`mlruns/`, `mlartifacts/`)
+- DVC кеш (`.dvc/cache/`)
+- Логи, тесты, документация
+- Временные файлы Python
+
+### Размер образа
+
+- **Базовый образ**: `python:3.9-slim` (~150 MB)
+- **С зависимостями**: ~1-2 GB (PyTorch, numpy, pandas)
+- **С моделью**: +2-10 MB (в зависимости от модели)
+
+### Оптимизация образа (опционально)
+
+Для production можно:
+1. Использовать multi-stage build
+2. Не копировать модель в образ, а монтировать через volume
+3. Использовать более легкий базовый образ
+4. Квантизовать модель
+
+### Пример использования
+
+```bash
+# 1. Положить изображения в test_images/
+cp /path/to/images/*.png test_images/
+
+# 2. Запустить контейнер
+docker run --rm \
+    -v $(pwd)/test_images:/app/input:ro \
+    -v $(pwd)/predictions:/app/output \
+    ml-app:v1 \
+    --input_path /app/input \
+    --output_path /app/output/predictions.csv
+
+# 3. Проверить результаты
+cat predictions/predictions.csv
+```
+
+### Интеграция с DVC
+
+Если модель версионируется через DVC и не включена в образ:
+
+```bash
+# Получить модель через DVC
+dvc pull models/best_model
+
+# Запустить контейнер с монтированием модели
+docker run --rm \
+    -v $(pwd)/test_images:/app/input:ro \
+    -v $(pwd)/predictions:/app/output \
+    -v $(pwd)/models:/app/models:ro \
+    ml-app:v1 \
+    --input_path /app/input \
+    --output_path /app/output/predictions.csv
 ```
 
 ## Тестирование

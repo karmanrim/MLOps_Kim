@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data (большие файлы данных)
+data/
+*.csv
+*.h5
+*.hdf5
+
+# DVC
+.dvc/cache/
+.dvc/tmp/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Logs
+logs/
+*.log
+
+# Tests
+tests/
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DVC files (метаданные оставляем, кеш нет)
+# .dvc/cache уже исключен выше
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
