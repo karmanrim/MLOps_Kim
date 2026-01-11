@@ -503,6 +503,300 @@ docker run --rm \
     --output_path /app/output/predictions.csv
 ```
 
+## TorchServe - онлайн REST API сервис
+
+Модель развернута как REST API сервис с использованием TorchServe для online inference.
+
+### Архитектура решения
+
+```
+Client → REST API (8080) → TorchServe → Handler → Model → Response
+         ↓
+    Management API (8081)
+         ↓  
+    Metrics API (8082)
+```
+
+### Подготовка артефактов
+
+#### 1. Экспорт модели в TorchServe формат
+
+```bash
+# Экспорт модели в state_dict формат
+python export_model_for_torchserve.py \
+    --model-path models/best_model \
+    --output-path torchserve/model.pt
+```
+
+Создаст:
+- `torchserve/model.pt` - веса модели
+- `torchserve/model_config.json` - конфигурация
+
+#### 2. Создание MAR архива
+
+```bash
+# Создание model archive с помощью torch-model-archiver
+./create_mar_archive.sh
+```
+
+Создаст: `torchserve/model-store/fashion_mnist.mar`
+
+MAR архив содержит:
+- Веса модели (`model.pt`)
+- Handler (`handler.py`) с предобработкой и постобработкой
+- Метаданные модели
+
+### Handler - пред- и постобработка
+
+Handler (`torchserve/handler.py`) реализует:
+
+**Предобработка (`preprocess`):**
+- Декодирование base64 изображения
+- Конвертация в PIL Image
+- Resize до 28x28, grayscale
+- Нормализация
+- Преобразование в тензор
+
+**Постобработка (`postprocess`):**
+- Вычисление вероятностей (softmax)
+- Определение предсказанного класса
+- Формирование JSON ответа с:
+  - `predicted_class` - номер класса (0-9)
+  - `predicted_label` - название класса
+  - `confidence` - уверенность модели
+  - `probabilities` - вероятности для всех классов
+
+### Сборка и запуск TorchServe
+
+#### Автоматический запуск (рекомендуется)
+
+```bash
+# Запуск всего процесса одной командой
+./run_torchserve.sh
+```
+
+Скрипт автоматически:
+1. Экспортирует модель
+2. Создаст MAR архив
+3. Соберет Docker образ
+4. Запустит контейнер
+5. Проверит здоровье сервиса
+
+#### Ручной запуск
+
+```bash
+# 1. Экспорт модели
+python export_model_for_torchserve.py
+
+# 2. Создание MAR архива
+./create_mar_archive.sh
+
+# 3. Сборка образа
+cd torchserve
+docker build -t mymodel-serve:v1 .
+
+# 4. Запуск контейнера
+docker run -d \
+    -p 8080:8080 \
+    -p 8081:8081 \
+    -p 8082:8082 \
+    --name torchserve-container \
+    mymodel-serve:v1
+```
+
+### Проверка работы сервиса
+
+#### Health check
+
+```bash
+# Проверка что сервис запущен
+curl http://localhost:8080/ping
+
+# Ожидаемый ответ:
+# {"status": "Healthy"}
+```
+
+#### Список моделей
+
+```bash
+# Получить список зарегистрированных моделей
+curl http://localhost:8081/models
+
+# Ответ:
+# {
+#   "models": [
+#     {
+#       "modelName": "fashion_mnist",
+#       "modelUrl": "fashion_mnist.mar"
+#     }
+#   ]
+# }
+```
+
+### REST API - примеры запросов
+
+#### Формат входных данных
+
+TorchServe принимает изображения в формате:
+
+**1. JSON с base64:**
+```json
+{
+  "image": "base64_encoded_image_data..."
+}
+```
+
+**2. Binary (multipart/form-data):**
+```bash
+curl -X POST \
+  http://localhost:8080/predictions/fashion_mnist \
+  -F "data=@image.png"
+```
+
+#### Пример запроса
+
+```bash
+# С тестовым файлом
+curl -X POST \
+  http://localhost:8080/predictions/fashion_mnist \
+  -T torchserve/sample_input.json \
+  -H "Content-Type: application/json"
+```
+
+#### Формат ответа
+
+```json
+{
+  "predicted_class": 3,
+  "predicted_label": "Dress",
+  "confidence": 0.9234,
+  "probabilities": {
+    "T-shirt/top": 0.0123,
+    "Trouser": 0.0045,
+    "Pullover": 0.0234,
+    "Dress": 0.9234,
+    "Coat": 0.0156,
+    "Sandal": 0.0034,
+    "Shirt": 0.0089,
+    "Sneaker": 0.0023,
+    "Bag": 0.0045,
+    "Ankle boot": 0.0017
+  }
+}
+```
+
+### Management API
+
+```bash
+# Информация о конкретной модели
+curl http://localhost:8081/models/fashion_mnist
+
+# Удаление модели (unregister)
+curl -X DELETE http://localhost:8081/models/fashion_mnist
+
+# Регистрация новой версии
+curl -X POST "http://localhost:8081/models?url=fashion_mnist.mar"
+
+# Масштабирование (увеличение workers)
+curl -X PUT "http://localhost:8081/models/fashion_mnist?min_worker=4"
+```
+
+### Metrics API
+
+```bash
+# Получить метрики
+curl http://localhost:8082/metrics
+
+# Метрики включают:
+# - Количество запросов
+# - Время обработки (latency)
+# - Использование CPU/Memory
+# - Ошибки
+```
+
+### Параметры конфигурации
+
+Файл `torchserve/config.properties`:
+
+```properties
+# Количество workers на модель (параллельная обработка)
+default_workers_per_model=2
+
+# Размер очереди запросов
+job_queue_size=100
+
+# Максимальный размер запроса/ответа
+max_request_size=655350000
+max_response_size=655350000
+
+# Порты
+inference_address=http://0.0.0.0:8080
+management_address=http://0.0.0.0:8081
+metrics_address=http://0.0.0.0:8082
+```
+
+### Управление контейнером
+
+```bash
+# Просмотр логов
+docker logs torchserve-container
+
+# Просмотр логов в реальном времени
+docker logs -f torchserve-container
+
+# Остановка сервиса
+docker stop torchserve-container
+
+# Запуск остановленного контейнера
+docker start torchserve-container
+
+# Удаление контейнера
+docker rm torchserve-container
+```
+
+### Производительность
+
+- **Latency**: ~50-100ms на запрос (зависит от hardware)
+- **Throughput**: ~20-50 requests/sec (на 1 worker)
+- **Масштабирование**: Увеличение `default_workers_per_model` для параллельной обработки
+
+### Интеграция с DVC
+
+Модель версионируется через DVC, поэтому:
+
+1. **Для обновления модели:**
+```bash
+# Получить новую версию модели через DVC
+dvc pull models/best_model
+
+# Пересоздать MAR архив
+./create_mar_archive.sh
+
+# Пересобрать Docker образ
+cd torchserve && docker build -t mymodel-serve:v1 .
+
+# Перезапустить контейнер
+docker restart torchserve-container
+```
+
+2. **Связь версий:** В MAR архив можно добавить `dvc.lock` для отслеживания версии данных
+
+### Структура TorchServe проекта
+
+```
+torchserve/
+├── Dockerfile              # Docker образ с TorchServe
+├── config.properties       # Конфигурация сервиса
+├── handler.py             # Custom handler с пред-/постобработкой
+├── model-store/           # Директория с MAR архивами
+│   └── fashion_mnist.mar  # Model archive
+└── sample_input.json      # Пример входных данных
+
+export_model_for_torchserve.py  # Экспорт модели
+create_mar_archive.sh            # Создание MAR
+run_torchserve.sh                # Автоматический запуск
+```
+
 ## Тестирование
 
 Проект включает комплексное тестирование всех компонентов:
